@@ -51,7 +51,7 @@ else:
 model = create_model(opt)      # create a model given opt.model and other options
 model.setup(opt)               # regular setup: load and print networks; create schedulers
 model.eval()
-
+output_path = opt.output_path
 if os.path.exists(output_path) == False:
     os.makedirs(output_path)
 else:

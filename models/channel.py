@@ -27,10 +27,45 @@ class Channel(nn.Module):
     def sample(self, N, P, M, L):
         # Sample the channel coefficients
         cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
+        print("shape",cof.shape)
+        print(cof)
         cof_zp = torch.cat((cof, torch.zeros((N,P,M-L))), -1)
         H_t = torch.fft.fft(cof_zp, dim=-1)
+
         return cof, H_t
 
+    def sampleJakes(self, N, P, M, L):
+        carrier_freq = 3.6e9
+        velocity = 50.0
+         # Calculate the maximum Doppler shift
+        max_doppler_shift = velocity / 3e8 * carrier_freq
+
+        # Generate angles for the scatterers
+        angles = torch.linspace(0, 2 * np.pi, opt.L)
+
+        # 子载波间隔（单位：Hz）
+        subcarrier_spacing = 30e3  # 30 kHz
+
+        # 为每个子载波计算中心频率
+        # 假设子载波索引从0开始，到M-1
+        subcarrier_freqs = torch.arange(0, M).float() * subcarrier_spacing
+
+        # 计算每个子载波的多普勒频移
+        doppler_shifts = max_doppler_shift * torch.cos(angles).view(1, L, 1)  # Shape: [1, L, 1]
+        phases = 2 * np.pi * doppler_shifts * subcarrier_freqs.view(1, 1, M)  # Shape: [1, L, M]
+
+         # 生成基本cof，其形状应为[1, L, M]
+        base_cof = (torch.cos(phases) + 1j * torch.sin(phases))  # Shape: [1, L, M]
+
+        # 根据N, P扩展cof
+        cof = base_cof.repeat(N, 1, 1).unsqueeze(1).repeat(1, P, 1, 1).view(N, P, L, M)  # Shape: [N, P, L, M]
+
+        #cof = cof.view(N, P, L)
+        # Zero padding and FFT
+        cof_zp = torch.cat((cof, torch.zeros((N, P, M - L))), -1)  # Zero padding
+        H_t = torch.fft.fft(cof_zp, dim=-1)
+        return cof, H_t
+    
     def forward(self, input, cof=None):
         # Input size:   NxPx(Sx(M+K))
         # Output size:  NxPx(Sx(M+K))
@@ -38,9 +73,10 @@ class Channel(nn.Module):
         # Generate Channel Matrix
 
         N, P, SMK = input.shape
-        
+
         # If the channel is not given, random sample one from the channel model
         if cof is None:
+            #cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
             cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
         else:
             cof_zp = torch.cat((cof, torch.zeros((N,P,self.opt.M-self.opt.L,2))), 2)  
@@ -92,7 +128,7 @@ class OFDM(nn.Module):
                 
         # If x is None, we only send the pilots through the channel
         is_pilot = (x == None)
-        
+        print("x",x.shape)
         if not is_pilot:
             
             # Change to new complex representations
@@ -187,9 +223,6 @@ class PLAIN(nn.Module):
         return rx 
 
 
-
-
-
 if __name__ == "__main__":
     
     import argparse
@@ -207,7 +240,7 @@ if __name__ == "__main__":
 
     ofdm = OFDM(opt, 0, './models/Pilot_bit.pt')
 
-    input_f = torch.randn(128, opt.P, opt.S, opt.M) + 1j*torch.randn(1, opt.P, opt.S, opt.M)
+    input_f = torch.randn(32, opt.P, opt.S, opt.M) + 1j*torch.randn(1, opt.P, opt.S, opt.M)
     input_f = normalize(input_f, 1)
     input_f = input_f.cuda()
 
