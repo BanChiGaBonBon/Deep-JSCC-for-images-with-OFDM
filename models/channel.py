@@ -28,10 +28,10 @@ class Channel(nn.Module):
         # Sample the channel coefficients
         cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
         print("shape",cof.shape)
-        print(cof)
+        #print(cof)
         cof_zp = torch.cat((cof, torch.zeros((N,P,M-L))), -1)
         H_t = torch.fft.fft(cof_zp, dim=-1)
-
+        print("ht_shape",H_t.shape)
         return cof, H_t
 
     def sampleJakes(self, N, P, M, L):
@@ -41,12 +41,12 @@ class Channel(nn.Module):
         max_doppler_shift = velocity / 3e8 * carrier_freq
 
         # Generate angles for the scatterers
-        angles = torch.linspace(0, 2 * np.pi, opt.L)
+        angles = torch.linspace(0, 2 * np.pi, L)
 
         # 子载波间隔（单位：Hz）
         subcarrier_spacing = 30e3  # 30 kHz
 
-        # 为每个子载波计算中心频率
+        # 为每个子载波计算中心频率q
         # 假设子载波索引从0开始，到M-1
         subcarrier_freqs = torch.arange(0, M).float() * subcarrier_spacing
 
@@ -59,11 +59,13 @@ class Channel(nn.Module):
 
         # 根据N, P扩展cof
         cof = base_cof.repeat(N, 1, 1).unsqueeze(1).repeat(1, P, 1, 1).view(N, P, L, M)  # Shape: [N, P, L, M]
-
+        print("cofshape",cof.shape)
+       # print(cof)
         #cof = cof.view(N, P, L)
         # Zero padding and FFT
-        cof_zp = torch.cat((cof, torch.zeros((N, P, M - L))), -1)  # Zero padding
-        H_t = torch.fft.fft(cof_zp, dim=-1)
+        #cof_zp = torch.cat((cof, torch.zeros((N, P, M - L))), -1)  # Zero padding
+        H_t = torch.fft.fft(cof, dim=-1)
+        print("ht_shape",H_t.shape)
         return cof, H_t
     
     def forward(self, input, cof=None):
@@ -77,7 +79,7 @@ class Channel(nn.Module):
         # If the channel is not given, random sample one from the channel model
         if cof is None:
             #cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
-            cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
+            cof, H_t = self.sampleJakes(N, P, self.opt.M, self.opt.L)
         else:
             cof_zp = torch.cat((cof, torch.zeros((N,P,self.opt.M-self.opt.L,2))), 2)  
             cof_zp = torch.view_as_complex(cof_zp) 
@@ -128,7 +130,7 @@ class OFDM(nn.Module):
                 
         # If x is None, we only send the pilots through the channel
         is_pilot = (x == None)
-        print("x",x.shape)
+        #print("x",x.shape)
         if not is_pilot:
             
             # Change to new complex representations
@@ -240,14 +242,16 @@ if __name__ == "__main__":
 
     ofdm = OFDM(opt, 0, './models/Pilot_bit.pt')
 
-    input_f = torch.randn(32, opt.P, opt.S, opt.M) + 1j*torch.randn(1, opt.P, opt.S, opt.M)
+    input_f = torch.randn(32, opt.P, opt.S, opt.M) + 1j*torch.randn(32, opt.P, opt.S, opt.M)
     input_f = normalize(input_f, 1)
     input_f = input_f.cuda()
 
     info_pilot, info_sig, H_t, noise_pwr, papr, papr_cp = ofdm(input_f, opt.SNR)
     H_t = H_t.cuda()
-    
-    err = input_f*H_t.unsqueeze(0) - info_sig
+    print("htshape",H_t.shape)
+    print("inputshape",input_f.shape)
+    err = input_f*H_t.unsqueeze(0) 
+    err = err - info_sig
 
     print(f'OFDM path error :{torch.mean(err.abs()**2).data}')
 

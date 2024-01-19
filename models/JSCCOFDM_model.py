@@ -198,6 +198,8 @@ class JSCCOFDMModel(BaseModel):
         self.loss_G_L2 = self.criterionL2(self.fake, self.real_B) * self.opt.lambda_L2        
         self.loss_PAPR = torch.mean(self.PAPR_cp) * self.opt.lambda_papr
         if self.opt.feedforward == 'EXPLICIT-RES':
+            print("ht", self.H_true.shape)
+            print("he", self.H_est.shape)
             self.loss_CE = self.criterionL2(torch.view_as_real(self.H_true.squeeze()), torch.view_as_real(self.H_est.squeeze())) * self.opt.lambda_ce
             self.loss_EQ = self.criterionL2(torch.view_as_real(self.rx), torch.view_as_real(self.tx_c)) * self.opt.lambda_eq
         else:
