@@ -140,11 +140,15 @@ class JSCCOFDMModel(BaseModel):
             self.fake = self.netG(dec_in)
         elif self.opt.feedforward == 'EXPLICIT-RES':
             self.H_est = self.channel_estimation(out_pilot, noise_pwr) 
+            print("est1 shape",self.H_est.shape)
             sub11 = torch.view_as_real(self.ofdm.pilot).repeat(N,1,1,1,1)
             sub12 = torch.view_as_real(out_pilot)
             sub1_input = torch.cat((sub11, sub12), 2).contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
             sub1_output = self.netS1(sub1_input).view(N, self.opt.P, 1, 2, self.opt.M).permute(0,1,2,4,3)
+            print("sub1shape",sub1_output.shape)
             self.H_est = self.H_est + torch.view_as_complex(sub1_output.contiguous())
+
+            print("est shape",self.H_est.shape)
 
             self.rx = self.equalization(self.H_est, out_sig, noise_pwr)
             sub21 = torch.view_as_real(self.H_est)
