@@ -5,7 +5,7 @@ import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
 import math 
-
+import random
 import sys
 sys.path.append('./')
 
@@ -25,14 +25,57 @@ class Channel(nn.Module):
         self.device = device
 
     def sample(self, N, P, M, L):
+        
         # Sample the channel coefficients
         cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
-        print("shape",cof.shape)
+        # print("shape",cof.shape)
         #print(cof)
         cof_zp = torch.cat((cof, torch.zeros((N,P,M-L))), -1)
         H_t = torch.fft.fft(cof_zp, dim=-1)
-        print("ht_shape",H_t.shape)
+        # print("ht_shape",H_t.shape)
         return cof, H_t
+
+    def sampleJakes2(self, N, P, M, L,v):
+        carrier_freq = 3e9
+        velocity = v
+         # Calculate the maximum Doppler shift
+        max_doppler_shift = velocity / 3e8 * carrier_freq
+         # Generate angles for the scatterers
+        angles = torch.linspace(0, 2 * np.pi, L)
+
+         # 计算多普勒频移
+        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift 
+        print(phases)
+        phases = 1 / 1.41421356 * (torch.cos(phases) + 1j * torch.sin(phases))
+        phases = torch.fft.ifft(phases)
+
+        phases = phases.repeat(N,P,1)
+        # print("phase",phases.shape)
+        
+        # Sample the channel coefficients
+        cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
+        
+        #print("shape",cof.shape)
+        phases_real = phases.real.float().view(N*P, -1).to(self.device)       
+        phases_imag = phases.imag.float().view(N*P, -1).to(self.device)       
+
+        
+        ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
+        cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
+        cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
+        
+        cof2_real = batch_conv1d(phases_real, cof_real) - batch_conv1d(phases_imag, cof_imag)   
+        cof2_imag = batch_conv1d(phases_real, cof_imag) + batch_conv1d(phases_imag, cof_real)  
+        cof2 = torch.cat((cof2_real.view(N*P,-1), cof2_imag.view(N*P,-1)), -1).view(N,P,L,2)
+        cof2 = torch.view_as_complex(cof2)
+        # diff = cof2 - cof.to(self.device)
+        # print(f'channel diff :{torch.mean(diff.abs()**2).data}')
+        # print(cof2)
+        # print("shape",cof2.shape)
+        cof_zp = torch.cat((cof2, torch.zeros((N,P,M-L)).to(self.device)), -1)
+        H_t = torch.fft.fft(cof_zp, dim=-1)
+        # print("ht_shape",H_t.shape)
+        return cof2, H_t          
 
     def sampleJakes(self, N, P, M, L,K):
         carrier_freq = 3.6e9
@@ -77,7 +120,7 @@ class Channel(nn.Module):
         #print("ht_shape",H_t.shape)
         return cof, H_t
     
-    def forward(self, input, cof=None,Ns=0):
+    def forward(self, input, cof=None,Ns=0,v=100):
         # Input size:   NxPx(Sx(M+K))
         # Output size:  NxPx(Sx(M+K))
         # Also return the true channel
@@ -87,8 +130,8 @@ class Channel(nn.Module):
         S = Ns+self.opt.N_pilot
         # If the channel is not given, random sample one from the channel model
         if cof is None:
-            # cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
-            cof, H_t = self.sampleJakes(N, P, self.opt.M, self.opt.L,self.opt.K)
+            cof, H_t = self.sample(N, P, self.opt.M, self.opt.L)
+            # cof, H_t = self.sampleJakes2(N, P, self.opt.M, self.opt.L,v)
         else:
             cof_zp = torch.cat((cof, torch.zeros((N,P,self.opt.M-self.opt.L,2))), 2)  
             cof_zp = torch.view_as_complex(cof_zp) 
@@ -96,37 +139,67 @@ class Channel(nn.Module):
         
         
 
-        input = input.repeat(1,1,1,1,self.opt.L) # (NxP)xSx(M+K)xL
+        # input = input.repeat(1,1,1,1,self.opt.L) # (NxP)xSx(M+K)xL
 
-        signal_real = input.real.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
-        signal_imag = input.imag.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
+        # signal_real = input.real.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
+        # signal_imag = input.imag.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
 
-        cof_real = cof.real.to(self.device)
-        cof_imag = cof.imag.to(self.device)
-        output_real = torch.matmul(signal_real,cof_real) - torch.matmul(signal_imag,cof_imag) # (NxPxS)x(M+K)xL
-        output_imag = torch.matmul(signal_real,cof_imag) + torch.matmul(signal_imag, cof_real)
+        # cof_real = cof.real.to(self.device)
+        # cof_imag = cof.imag.to(self.device)
+        # output_real = torch.matmul(signal_real,cof_real) - torch.matmul(signal_imag,cof_imag) # (NxPxS)x(M+K)xL
+        # output_imag = torch.matmul(signal_real,cof_imag) + torch.matmul(signal_imag, cof_real)
         
-        output_real = torch.sum(output_real,dim = 2) # (NxPxS)x(M+K)
-        output_imag = torch.sum(output_imag,dim = 2) 
-        output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)
+        # output_real = torch.sum(output_real,dim = 2) # (NxPxS)x(M+K)
+        # output_imag = torch.sum(output_imag,dim = 2) 
+        # output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)
 
        
-        # input = input.view(N, self.opt.P, S, self.opt.M+self.opt.K) # NxPxSx(M+K)
-        # signal_real = input.real.float().view(N*P, -1)       # (NxP)x(Sx(M+K))
-        # signal_imag = input.imag.float().view(N*P, -1)       # (NxP)x(Sx(M+K))
+        
+        #input = input.view(N, self.opt.P, S, self.opt.M+self.opt.K) # NxPxSx(M+K)
 
         
-        # ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
-        # cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        # cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
+        signal_real = input.real.float().view(N*P, -1)       
+        signal_imag = input.imag.float().view(N*P, -1)       
+
         
-        # output_real = batch_conv1d(signal_real, cof_real) - batch_conv1d(signal_imag, cof_imag)   # (NxP)x(L+SMK-1)
-        # output_imag = batch_conv1d(signal_real, cof_imag) + batch_conv1d(signal_imag, cof_real)   # (NxP)x(L+SMK-1)
+        ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
+        cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
+        cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
+        
+        output_real = batch_conv1d(signal_real, cof_real) - batch_conv1d(signal_imag, cof_imag)   # (NxP)x(L+SMK-1)
+        output_imag = batch_conv1d(signal_real, cof_imag) + batch_conv1d(signal_imag, cof_real)   # (NxP)x(L+SMK-1)
 
         # output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)   # NxPxSMKx2
 
+        output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,S,-1,2) # NxPxSxMKx2
+        output = torch.view_as_complex(output) 
+        
+        t = torch.linspace(0,(S-1) * (0.5e-3 / 14),S).to(self.device)
+        carrier_freq = 3e9
 
-        # print("output",output.shape)
+        velocity = self.opt.V
+         # Calculate the maximum Doppler shift
+        max_doppler_shift = velocity / 3e8 * carrier_freq
+
+        angles = torch.linspace(0, 2 * np.pi, self.opt.L).to(self.device)
+
+         # 计算多普勒频移
+        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift
+
+
+        phases_real = (1 / 1.41421356 * torch.cos(t * phases)).unsqueeze(1).unsqueeze(0).unsqueeze(0)
+        phases_imag = (1 / 1.41421356 * torch.sin(t * phases)).unsqueeze(1).unsqueeze(0).unsqueeze(0)
+
+        output_real = output.real
+        output_imag = output.imag.to(self.device)
+        # print(phases_real.shape)
+        # print(output_real.shape)
+        output2_real = output_real * phases_real - output_imag * phases_imag
+        output2_imag = output_real * phases_imag + output_imag * phases_real
+        output2 = torch.cat((output2_real.view(N*P,-1,1), output2_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)
+
+        output = output2.view(N,P,SMK,2)
+        # # print("output",output.shape)
         output = torch.view_as_complex(output) 
 
         return output, H_t
@@ -153,38 +226,55 @@ class OFDM(nn.Module):
         self.pilot = pilot.to(device)
         self.pilot = torch.view_as_complex(self.pilot)
         self.pilot = normalize(self.pilot, 1)
-        self.pilot_cp = add_cp(torch.fft.ifft(self.pilot), self.opt.K).repeat(opt.P, opt.N_pilot,1)        
+        print(self.pilot)
+        print("pilot shape",self.pilot.shape)
+        #ISFFT
+        self.pilot_is = self.pilot.repeat(opt.N_pilot,1)
+        self.pilot_is = np.sqrt(self.pilot_is.shape[-2] / self.pilot_is.shape[-1]) * torch.fft.ifft(self.pilot_is,dim = -2)
+        print(self.pilot_is)
+        self.pilot_cp = add_cp(self.pilot_is, self.opt.K).repeat(opt.P, 1,1)
+        
+        
+        # self.pilot_cp = add_cp(torch.fft.ifft(self.pilot), self.opt.K).repeat(opt.P, opt.N_pilot,1)      
+        print(self.pilot_cp)  
+        print("pilot_cp",self.pilot_cp.shape)
 
-    def forward(self, x, SNR, cof=None, batch_size=None):
+    def forward(self, x, SNR, cof=None, batch_size=None,v=100):
         # Input size: NxPxSxM   The information to be transmitted
         # cof denotes given channel coefficients
                 
         # If x is None, we only send the pilots through the channel
         is_pilot = (x == None)
-        #print("x",x.shape)
+        # print("x",x.shape)
         if not is_pilot:
             
             # Change to new complex representations
             N = x.shape[0]
+            
+            # ISFFT
+
+            x = np.sqrt(x.shape[-2] / x.shape[-1]) * torch.fft.ifft(x,dim = -2)
 
             # IFFT:                    NxPxSxM  => NxPxSxM
-            x = torch.fft.ifft(x, dim=-1)
+            # x = torch.fft.ifft(x, dim=-1)
 
             # Add Cyclic Prefix:       NxPxSxM  => NxPxSx(M+K)
             x = add_cp(x, self.opt.K)
 
             # Add pilot:               NxPxSx(M+K)  => NxPx(S+2)x(M+K)
             pilot = self.pilot_cp.repeat(N,1,1,1)
+
+
             x = torch.cat((pilot, x), 2)
             Ns = self.opt.S
         else:
             N = batch_size
             x = self.pilot_cp.repeat(N,1,1,1)
             Ns = 0    
-        print("x",x.shape)
+        # print("x",x.shape)
         # Reshape:                 NxPx(S+2)x(M+K)  => NxPx(S+2)(M+K)
         x = x.view(N, self.opt.P, (Ns+self.opt.N_pilot)*(self.opt.M+self.opt.K))
-        print("x.v",x.shape)
+        # print("x.v",x.shape)
         # PAPR before clipping
         papr = PAPR(x)
         
@@ -197,8 +287,8 @@ class OFDM(nn.Module):
         
         
         # Pass through the Channel:        NxPx(S+1)(M+K)  =>  NxPx((S+1)(M+K))
-        y, H_t = self.channel(x, cof, Ns)
-        print("y",y.shape)
+        y, H_t = self.channel(x, cof, Ns, v)
+        # print("y",y.shape)
         # Calculate the power of received signal        
         pwr = torch.mean(y.abs()**2, -1, True)
         noise_pwr = pwr*10**(-SNR/10)
@@ -219,8 +309,15 @@ class OFDM(nn.Module):
             info_sig = rm_cp(y_sig, self.opt.K)        # NxPxSxM
 
             # FFT:                     
-            info_pilot = torch.fft.fft(info_pilot, dim=-1)
-            info_sig = torch.fft.fft(info_sig, dim=-1)
+            # info_pilot = torch.fft.fft(info_pilot, dim=-1)
+            # info_sig = torch.fft.fft(info_sig, dim=-1)
+            # print("INFOSIG",info_sig.shape)
+
+            # SFFT
+            # # print("infopilot",info_pilot.shape)
+            info_pilot = np.sqrt(info_pilot.shape[-1] / info_pilot.shape[-2]) * torch.fft.fft(info_pilot,dim = -2)
+            print(info_pilot)
+            info_sig = np.sqrt(info_sig.shape[-1] / info_sig.shape[-2]) * torch.fft.fft(info_sig,dim = -2)
 
             return info_pilot, info_sig, H_t, noise_pwr, papr, papr_cp
         else:
@@ -258,7 +355,7 @@ class PLAIN(nn.Module):
 
 
 if __name__ == "__main__":
-    
+
     import argparse
     opt = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     
@@ -278,13 +375,17 @@ if __name__ == "__main__":
     input_f = normalize(input_f, 1)
     input_f = input_f.cuda()
 
-    info_pilot, info_sig, H_t, noise_pwr, papr, papr_cp = ofdm(input_f, opt.SNR)
+    info_pilot, info_sig, H_t, noise_pwr, papr, papr_cp = ofdm(input_f, opt.SNR, v=10)
     H_t = H_t.cuda()
-    print("htshape",H_t.shape)
-    print("inputshape",input_f.shape)
     err = input_f*H_t.unsqueeze(0) 
     err = err - info_sig
+    print(f'OFDM path error :{torch.mean(err.abs()**2).data}')
 
+
+    info_pilot, info_sig, H_t, noise_pwr, papr, papr_cp = ofdm(input_f, opt.SNR, v=1000)
+    H_t = H_t.cuda()
+    err = input_f*H_t.unsqueeze(0) 
+    err = err - info_sig
     print(f'OFDM path error :{torch.mean(err.abs()**2).data}')
 
     from utils import ZF_equalization, MMSE_equalization, LS_channel_est, LMMSE_channel_est
