@@ -60,6 +60,10 @@ class BaseOptions():
         parser.add_argument('--SNR', type=float, default=20.0, help='SNR')
         parser.add_argument('--is_feedback', action='store_true', help='Wether to provide CSI feedback to the encoder')
         parser.add_argument('--feedforward', type=str, default='EXPLICIT-RES', help='which decoder design to use, choose from [IMPLICIT | EXPLICIT-CE | EXPLICIT-CE-EQ | EXPLICIT-RES]')
+
+
+        parser.add_argument('--V', type=float, default=0.0, help='velocity')
+        parser.add_argument('--mod', type=str, default='OFDM', help='OTFS/OFDM')
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='CIFAR10', help='chooses how datasets are loaded. [CIFAR10 | CelebA]')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
