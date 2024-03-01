@@ -228,21 +228,37 @@ class Channel(nn.Module):
         angles = torch.linspace(0, 2 * np.pi, self.opt.L).to(self.device)
 
          # 计算多普勒频移
-        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift # L
+        # phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift # L
 
-        phases = torch.outer(phases,angles)
-        shift = torch.exp(1j * phases).to(self.device)
+        # phases = torch.outer(phases,t)
+        # shift = torch.exp(1j * phases).to(self.device)
         
-        input = input.view(N,P,S,-1)
-        out = torch.zeros_like(input)
-        for n in range(N):
-            for p in range(P):
-                for l in range(self.opt.L):
-                    for s in range(S):
+        # input = input.view(N,P,S,-1)
+        # out = torch.zeros_like(input)
+        # for n in range(N):
+        #     for p in range(P):
+        #         for l in range(self.opt.L):
+        #             for s in range(S):
 
-                        out[n,p,s,...] = out[n,p,s,...] + input[n,p,s,...] * cof[n,p,l] * shift[l,s]
+        #                 out[n,p,s,...] = out[n,p,s,...] + input[n,p,s,...] * cof[n,p,l] * shift[l,s]
+        # output = out.view(N,P,SMK)
 
-        output = out.view(N,P,SMK)
+        # 将输入和系数张量的形状调整为匹配乘法的形状
+        input_reshaped = input.view(N, P, S, -1).unsqueeze(2).to(self.device)  # (N, P, 1,S, MK)
+        cof_reshaped = cof.view(N, P, self.opt.L, 1,1).to(self.device)  # (N, P, L, 1,1)
+
+        # 将相位张量调整为匹配乘法的形状
+        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift  # (L,)
+        phases = torch.outer(phases, t).to(self.device)  # (L, S)
+        shift = torch.exp(1j * phases).unsqueeze(2).unsqueeze(0).unsqueeze(0).to(self.device)  # (1, 1, L, S,1)
+
+        # 执行向量化操作
+        
+        out = torch.sum(input_reshaped * cof_reshaped * shift, dim=2)  # (N, P, MK)
+        # print(cof_reshaped.shape)
+        # 将输出调整为所需的形状
+        output = out.view(N, P, SMK)
+        
         
         """
         phases_real =  torch.cos(phases).unsqueeze(1).unsqueeze(0).unsqueeze(0)
