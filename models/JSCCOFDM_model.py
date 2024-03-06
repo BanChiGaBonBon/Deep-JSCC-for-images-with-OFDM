@@ -32,7 +32,8 @@ class JSCCOFDMModel(BaseModel):
         if self.opt.feedforward in ['EXPLICIT-CE-EQ', 'EXPLICIT-RES']:
             C_decode = opt.C_channel
         elif self.opt.feedforward == 'IMPLICIT':
-            C_decode = opt.C_channel + self.opt.N_pilot*self.opt.P*2 + self.opt.P*2
+            # C_decode = opt.C_channel + self.opt.N_pilot*self.opt.P*2 + self.opt.P*2 # otfs 44 ofdm 18
+            C_decode = 16
         elif self.opt.feedforward == 'EXPLICIT-CE':
             C_decode = opt.C_channel + self.opt.P*2
         
@@ -86,7 +87,7 @@ class JSCCOFDMModel(BaseModel):
                 self.optimizers.append(self.optimizer_D)
 
         self.opt = opt
-        self.ofdm = channel.OFDM(opt, self.device, './models/Pilot_bit.pt')
+        self.ofdm = channel.OFDM(opt, self.device, self.opt.pilot_path)
 
     def name(self):
         return 'JSCCOFDM_Model'
@@ -118,12 +119,29 @@ class JSCCOFDMModel(BaseModel):
         self.H_true = self.H_true.to(self.device)
 
         N, C, H, W = latent.shape
-
+        # print("latent",latent.shape)
         if self.opt.feedforward == 'IMPLICIT':
-            r1 = torch.view_as_real(self.ofdm.pilot).repeat(N,1,1,1,1)
+            
             r2 = torch.view_as_real(out_pilot)
             r3 = torch.view_as_real(out_sig)
-            dec_in = torch.cat((r1, r2, r3), 2).contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
+
+            if(self.opt.mod=='OFDM'):
+                r1 = torch.view_as_real(self.ofdm.pilot).repeat(N,1,1,1,1)
+                dec_in = torch.cat((r1, r2, r3), 2).contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
+                print("decin",dec_in.shape)
+            if(self.opt.mod=='OTFS'):
+                r1 = torch.view_as_real(self.ofdm.pilot).view(1,1,self.opt.S,1,2).repeat(N,1,1,1,1)
+                dec_in = torch.cat((r1, r2, r3), 3)
+
+                # print("r1",r1.shape)
+                # print("r2",r2.shape)
+                # print("r3",r3.shape)
+                
+                # print("decin",dec_in.shape)
+
+                dec_in = dec_in.contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
+                # print("decin",dec_in.shape)
+                
             self.fake = self.netG(dec_in)
         elif self.opt.feedforward == 'EXPLICIT-CE':
             # Channel estimation

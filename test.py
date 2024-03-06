@@ -66,7 +66,13 @@ PSNR_OTFS = {}
 for v in range(0,opt.v_range,opt.v_step):
     opt.V = v
     print("V",opt.V)
-    for mod in ['OFDM', 'OTFS']:
+    mods = []
+    if(opt.mod=='both'):
+        mods = ['OFDM', 'OTFS']
+    else:
+        mods.append(opt.mod)
+        # print(mods)
+    for mod in mods:
         opt.mod = mod
         print('mod',opt.mod)
         model = create_model(opt)      # create a model given opt.model and other options

@@ -44,6 +44,8 @@ class BaseOptions():
         parser.add_argument('--init_type', type=str, default='kaiming', help='network initialization [normal | xavier | kaiming | orthogonal]')
         parser.add_argument('--init_gain', type=float, default=0.02, help='scaling factor for normal, xavier and orthogonal.')
         parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
+        
+        parser.add_argument('--pilot_path', type=str, default='./models/Pilot_bit.pt', help='')
         # OFDM parameters
         parser.add_argument('--P', type=int, default=1, help='number of packets for each transmitted image')
         parser.add_argument('--S', type=int, default=6, help='number of OFDM symbols per packet')

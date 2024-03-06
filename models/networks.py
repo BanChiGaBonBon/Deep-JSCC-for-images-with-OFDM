@@ -9,7 +9,7 @@ import numpy as np
 from torch.nn import functional as F
 from typing import List, Callable, Union, Any, TypeVar, Tuple
 from math import exp
-
+from torchsummary import summary
 # from torch import tensor as Tensor
 
 Tensor = TypeVar('torch.tensor')
@@ -329,8 +329,9 @@ class Encoder(nn.Module):
         self.projection = nn.Conv2d(min(ngf * mult,max_ngf)+first_add_C, C_channel, kernel_size=3, padding=1, stride=1, bias=use_bias)
         
     def forward(self, input, H=None):
-
+        # print("input",input.shape)
         z =  self.model_down(input)
+        # print("z",z.shape)
         if H is not None:
             N,C,HH,WW = z.shape            
             z = torch.cat((z,H.contiguous().permute(0,1,2,4,3).view(N, -1, HH,WW)), 1)
