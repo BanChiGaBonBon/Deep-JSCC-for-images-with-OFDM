@@ -27,97 +27,13 @@ class Channel(nn.Module):
     def sample(self, N, P, M, L):
         
         # Sample the channel coefficients
-        cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
+        # cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
+        cof = torch.sqrt(self.power/2) * (np.random.rayleigh(size=(N,P,L)))
         # print("shape",cof.shape)
         #print(cof)
         cof_zp = torch.cat((cof, torch.zeros((N,P,M-L))), -1)
         H_t = torch.fft.fft(cof_zp, dim=-1)
         # print("ht_shape",H_t.shape)
-        return cof, H_t
-
-    def sampleJakes2(self, N, P, M, L,v):
-        carrier_freq = 3e9
-        velocity = v
-         # Calculate the maximum Doppler shift
-        max_doppler_shift = velocity / 3e8 * carrier_freq
-         # Generate angles for the scatterers
-        angles = torch.linspace(0, 2 * np.pi, L)
-
-         # 计算多普勒频移
-        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift 
-        print(phases)
-        phases = 1 / 1.41421356 * (torch.cos(phases) + 1j * torch.sin(phases))
-        phases = torch.fft.ifft(phases)
-
-        phases = phases.repeat(N,P,1)
-        # print("phase",phases.shape)
-        
-        # Sample the channel coefficients
-        cof = torch.sqrt(self.power/2) * (torch.randn(N, P, L) + 1j*torch.randn(N, P, L))
-        
-        #print("shape",cof.shape)
-        phases_real = phases.real.float().view(N*P, -1).to(self.device)       
-        phases_imag = phases.imag.float().view(N*P, -1).to(self.device)       
-
-        
-        ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
-        cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        
-        cof2_real = batch_conv1d(phases_real, cof_real) - batch_conv1d(phases_imag, cof_imag)   
-        cof2_imag = batch_conv1d(phases_real, cof_imag) + batch_conv1d(phases_imag, cof_real)  
-        cof2 = torch.cat((cof2_real.view(N*P,-1), cof2_imag.view(N*P,-1)), -1).view(N,P,L,2)
-        cof2 = torch.view_as_complex(cof2)
-        # diff = cof2 - cof.to(self.device)
-        # print(f'channel diff :{torch.mean(diff.abs()**2).data}')
-        # print(cof2)
-        # print("shape",cof2.shape)
-        cof_zp = torch.cat((cof2, torch.zeros((N,P,M-L)).to(self.device)), -1)
-        H_t = torch.fft.fft(cof_zp, dim=-1)
-        # print("ht_shape",H_t.shape)
-        return cof2, H_t          
-
-    def sampleJakes(self, N, P, M, L,K):
-        carrier_freq = 3.6e9
-        velocity = 50.0
-         # Calculate the maximum Doppler shift
-        max_doppler_shift = velocity / 3e8 * carrier_freq
-
-        # Generate angles for the scatterers
-        angles = torch.linspace(0, 2 * np.pi, L)
-
-        # 子载波间隔（单位：Hz）
-        subcarrier_spacing = 30e3  # 30 kHz
-
-        # 为每个子载波计算中心频率q
-        # 假设子载波索引从0开始，到M-1
-        subcarrier_freqs = carrier_freq - torch.arange(0, M+K).float() * subcarrier_spacing
-        subcarrier_freqs = subcarrier_freqs.view(1,1,M+K) # Shape: [1, 1, M+K]
-
-        # 计算每个子载波的多普勒频移
-        phase = 2 * np.pi * subcarrier_freqs * velocity / 3e8
-
-        # 计算每个路径的多普勒频移
-        phases = phase * torch.cos(angles).view(L, 1) # Shape: [L, M+K]
-        print("phases",phases.shape)
-
-         # 生成基本cof，其形状应为[1, L, M+K]
-        base_cof = (torch.cos(phases) + 1j * torch.sin(phases))  # Shape: [L, M+K]
-        base_cof = torch.nn.functional.normalize(base_cof,p=2,dim = 1)
-        #cof = base_cof.repeat(N, 1, 1).unsqueeze(1).repeat(1, P, 1, 1).view(N, P, L, M+K)  # Shape: [N, P, L, M+K]
-        cof = base_cof
-        H_t = torch.fft.fft(cof, dim=-1)
-
-        
-        # 根据N, P扩展cof
-    #     cof = base_cof.repeat(N, 1, 1).unsqueeze(1).repeat(1, P, 1, 1).view(N, P, L, M)  # Shape: [N, P, L, M]
-    #     #print("cofshape",cof.shape)
-    #    # print(cof)
-    #     #cof = cof.view(N, P, L)
-    #     # Zero padding and FFT
-    #     #cof_zp = torch.cat((cof, torch.zeros((N, P, M - L))), -1)  # Zero padding
-    #     H_t = torch.fft.fft(cof, dim=-1)
-        #print("ht_shape",H_t.shape)
         return cof, H_t
 
 
@@ -126,7 +42,7 @@ class Channel(nn.Module):
         # Output size:  NxPx(Sx(M+K))
         # Also return the true channel
         # Generate Channel Matrix
-
+        
         N, P, SMK = input.shape
         if(self.opt.mod=='OFDM'):
             M = self.opt.M
@@ -143,114 +59,48 @@ class Channel(nn.Module):
             cof_zp = torch.view_as_complex(cof_zp) 
             H_t = torch.fft.fft(cof_zp, dim=-1)
         
+        # 根据路径衰落生成路径距离
+        len = - 100 * np.log(cof).to(self.device) # N, P, L
+
+        delay1 = len / 3e8
+
+        # 符号间的延迟差
+        delay2= torch.linspace(0,(S-1) * (0.5e-3 / 14),S).to(self.device)
+        delay2 = delay2.repeat(N,P,1)
+
+        delay = delay1.unsqueeze(3) + delay2.unsqueeze(2) # N,P,L,S
         
 
-        # input = input.repeat(1,1,1,1,self.opt.L) # (NxP)xSx(M+K)xL
-
-        # signal_real = input.real.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
-        # signal_imag = input.imag.float().view(N*P*S, self.opt.M+self.opt.K,self.opt.L)       # (NxPxS)x(M+K)xL
-
-        # cof_real = cof.real.to(self.device)
-        # cof_imag = cof.imag.to(self.device)
-        # output_real = torch.matmul(signal_real,cof_real) - torch.matmul(signal_imag,cof_imag) # (NxPxS)x(M+K)xL
-        # output_imag = torch.matmul(signal_real,cof_imag) + torch.matmul(signal_imag, cof_real)
-        
-        # output_real = torch.sum(output_real,dim = 2) # (NxPxS)x(M+K)
-        # output_imag = torch.sum(output_imag,dim = 2) 
-        # output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)
-
-       
-        
-        #input = input.view(N, self.opt.P, S, self.opt.M+self.opt.K) # NxPxSx(M+K)
-
-        
-        # signal_real = input.real.float().view(N*P, -1)       
-        # signal_imag = input.imag.float().view(N*P, -1)       
-
-        
-        # ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
-        # cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        # cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        
-        # output_real = batch_conv1d(signal_real, cof_real) - batch_conv1d(signal_imag, cof_imag)   # (NxP)x(L+SMK-1)
-        # output_imag = batch_conv1d(signal_real, cof_imag) + batch_conv1d(signal_imag, cof_real)   # (NxP)x(L+SMK-1)
-
-        # # output1 = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)   # NxPxSMKx2
-
-        # output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,S,-1,2) # NxPxSxMKx2
-        # output = torch.view_as_complex(output) 
-        
-        ## test
-        # output = input.view(N,P,S,-1)
-
-        t = torch.linspace(0,(S-1) * (0.5e-3 / 14),S).to(self.device)
         carrier_freq = 3e9
 
-        velocity = self.opt.V
+        if self.opt.is_random_v:
+            velocity = random.uniform(0,self.opt.v_range)
+        else:
+            velocity = self.opt.V
+        # velocity = random.uniform(0,100)
          # Calculate the maximum Doppler shift
         max_doppler_shift = velocity / 3e8 * carrier_freq
 
         angles = torch.linspace(0, 2 * np.pi, self.opt.L).to(self.device)
 
-         # 计算多普勒频移
-        # phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift # L
-
-        # phases = torch.outer(phases,t)
-        # shift = torch.exp(1j * phases).to(self.device)
-        
-        # delay = []
-        # for d in delay:
-        #     input = self.sinc_base_FD_FIR(input,7,d)
+       
         # 将输入和系数张量的形状调整为匹配乘法的形状
-        input_reshaped = input.view(N, P, S, -1).unsqueeze(2).to(self.device)  # (N, P, 1,S, MK)
+        input_reshaped = input.view(N, P, S, -1).unsqueeze(2).to(self.device)  # (N, P, 1,S, M+K)
         cof_reshaped = cof.view(N, P, self.opt.L, 1,1).to(self.device)  # (N, P, L, 1,1)
 
         # 将相位张量调整为匹配乘法的形状
-        phases = 2 * np.pi * torch.cos(angles) * max_doppler_shift  # (L,)
-        phases = torch.outer(phases, t).to(self.device)  # (L, S)
-        shift = torch.exp(1j * phases).unsqueeze(2).unsqueeze(0).unsqueeze(0).to(self.device)  # (1, 1, L, S,1)
+        phases = (2 * np.pi * torch.cos(angles) * max_doppler_shift).unsqueeze(0).unsqueeze(0).unsqueeze(-1)  # (1,1,L,1)
+
+        phases = phases * delay.to(self.device)  # (N,P,L, S)
+        shift = torch.exp(-1j * phases).unsqueeze(-1)  # (N,P, L, S,1)
 
         # 执行向量化操作
-        out = torch.sum(input_reshaped * cof_reshaped * shift, dim=2)  # (N, P, MK)
+        out = torch.sum(input_reshaped * cof_reshaped * shift, dim=2)  # (N, P, M+K)
         # print(cof_reshaped.shape)
         # 将输出调整为所需的形状
         output = out.view(N, P, SMK)
         
-        
-        """
-        phases_real =  torch.cos(phases).unsqueeze(1).unsqueeze(0).unsqueeze(0)
-        phases_imag =  torch.sin(phases).unsqueeze(1).unsqueeze(0).unsqueeze(0)
-
-        print("phase shape",phases_real.shape)
-        output_real = output.real
-        output_imag = output.imag.to(self.device)
-        # print(phases_real.shape)
-        # print(output_real.shape)
-        output2_real = output_real * phases_real - output_imag * phases_imag
-        output2_imag = output_real * phases_imag + output_imag * phases_real
-
-        output2_real = output2_real.view(N*P,-1)
-        output2_imag = output2_imag.view(N*P,-1)
-        # output2 = torch.cat((output2_real.view(N*P,-1,1), output2_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)
-
-        # output = output2.view(N,P,SMK,2)
-        # # # print("output",output.shape)
-        # output = torch.view_as_complex(output) 
-
-         
-        ind = torch.linspace(self.opt.L-1, 0, self.opt.L).long()
-        cof_real = cof.real[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        cof_imag = cof.imag[...,ind].view(N*P, -1).float().to(self.device)  # (NxP)xL
-        
-        output_real = batch_conv1d(output2_real, cof_real) - batch_conv1d(output2_imag, cof_imag)   # (NxP)x(L+SMK-1)
-        output_imag = batch_conv1d(output2_real, cof_imag) + batch_conv1d(output2_imag, cof_real)   # (NxP)x(L+SMK-1)
-
-        # output1 = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2)   # NxPxSMKx2
-
-        output = torch.cat((output_real.view(N*P,-1,1), output_imag.view(N*P,-1,1)), -1).view(N,P,SMK,2) # NxPxSxMKx2
-        output = torch.view_as_complex(output) 
-        """
-
+       
         return output, H_t
 
     def sinc_base_FD_FIR(self,x,N,delay):
@@ -350,9 +200,11 @@ class OFDM(nn.Module):
                 pilot = self.pilot_is.repeat(N,1,1,1) #  NxPxSx2
                 
                 x = torch.cat((pilot, x), 3)
+                
                 # print("xshape",x.shape)
                 x = np.sqrt(x.shape[-2] / x.shape[-1]) * torch.fft.ifft(x,dim = -2)
                 x = add_cp(x, self.opt.K)
+                
             elif(self.opt.mod=='OFDM'):
                 # IFFT:                    NxPxSxM  => NxPxSxM
                 x = torch.fft.ifft(x, dim=-1)
@@ -378,6 +230,7 @@ class OFDM(nn.Module):
             S = Ns
             M = self.opt.M+self.opt.N_pilot
        
+        
         x = x.view(N, self.opt.P, S*(M+self.opt.K))
 
         

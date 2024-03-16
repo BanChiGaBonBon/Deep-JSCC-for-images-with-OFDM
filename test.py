@@ -63,7 +63,7 @@ else:
 
 PSNR_OFDM = {}
 PSNR_OTFS = {}
-for v in range(0,opt.v_range,opt.v_step):
+for v in range(10,opt.v_range,opt.v_step):
     opt.V = v
     print("V",opt.V)
     mods = []
@@ -136,10 +136,10 @@ for v in range(0,opt.v_range,opt.v_step):
             PSNR_OTFS[v] = PSNR
         
 
-plt.plot(list(PSNR_OFDM.keys()), list(PSNR_OFDM.values()), label='OFDM')
+# plt.plot(list(PSNR_OFDM.keys()), list(PSNR_OFDM.values()), label='OFDM')
 plt.plot(list(PSNR_OTFS.keys()), list(PSNR_OTFS.values()), label='OTFS')
 for v in range(0,opt.v_range,opt.v_step):
-    plt.text(v, PSNR_OFDM[v], f'({v}, {PSNR_OFDM[v]:.2f})', fontsize=6, ha='center', va='bottom')
+    # plt.text(v, PSNR_OFDM[v], f'({v}, {PSNR_OFDM[v]:.2f})', fontsize=6, ha='center', va='bottom')
     plt.text(v, PSNR_OTFS[v], f'({v}, {PSNR_OTFS[v]:.2f})', fontsize=6, ha='center', va='bottom')
 plt.xlabel('Velocity m/s')
 plt.ylabel('PSNR')

@@ -32,8 +32,8 @@ class JSCCOFDMModel(BaseModel):
         if self.opt.feedforward in ['EXPLICIT-CE-EQ', 'EXPLICIT-RES']:
             C_decode = opt.C_channel
         elif self.opt.feedforward == 'IMPLICIT':
-            # C_decode = opt.C_channel + self.opt.N_pilot*self.opt.P*2 + self.opt.P*2 # otfs 44 ofdm 18
-            C_decode = 16
+            C_decode = opt.C_channel + self.opt.N_pilot*self.opt.P*2 + self.opt.P*2 
+            # C_decode = 16
         elif self.opt.feedforward == 'EXPLICIT-CE':
             C_decode = opt.C_channel + self.opt.P*2
         
@@ -111,7 +111,8 @@ class JSCCOFDMModel(BaseModel):
             cof = None
             latent = self.netE(self.real_A)
                 
-        self.tx = latent.contiguous().view(N, self.opt.P, self.opt.S, 2, self.opt.M).contiguous().permute(0,1,2,4,3)
+        self.tx = latent.contiguous().view(N, self.opt.P, self.opt.M, 2, self.opt.S).contiguous().permute(0,1,4,2,3)
+        
         self.tx_c = torch.view_as_complex(self.tx.contiguous())
         self.tx_c = normalize(self.tx_c, 1)
 
@@ -128,7 +129,7 @@ class JSCCOFDMModel(BaseModel):
             if(self.opt.mod=='OFDM'):
                 r1 = torch.view_as_real(self.ofdm.pilot).repeat(N,1,1,1,1)
                 dec_in = torch.cat((r1, r2, r3), 2).contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
-                print("decin",dec_in.shape)
+                
             if(self.opt.mod=='OTFS'):
                 r1 = torch.view_as_real(self.ofdm.pilot).view(1,1,self.opt.S,1,2).repeat(N,1,1,1,1)
                 dec_in = torch.cat((r1, r2, r3), 3)
@@ -139,7 +140,7 @@ class JSCCOFDMModel(BaseModel):
                 
                 # print("decin",dec_in.shape)
 
-                dec_in = dec_in.contiguous().permute(0,1,2,4,3).contiguous().view(N, -1, H, W)
+                dec_in = dec_in.contiguous().permute(0,1,3,4,2).contiguous().view(N, -1, H, W).float()
                 # print("decin",dec_in.shape)
                 
             self.fake = self.netG(dec_in)
