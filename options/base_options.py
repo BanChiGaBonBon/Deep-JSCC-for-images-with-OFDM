@@ -67,6 +67,8 @@ class BaseOptions():
         parser.add_argument('--V', type=float, default=0.0, help='velocity')
         parser.add_argument('--mod', type=str, default='OFDM', help='OTFS/OFDM')
         parser.add_argument('--is_random_v', action='store_true', help='')
+        parser.add_argument('--v_range', type=int, default=0, help='')
+        parser.add_argument('--v_step', type=int, default=0, help='')
         # dataset parameters
         parser.add_argument('--dataset_mode', type=str, default='CIFAR10', help='chooses how datasets are loaded. [CIFAR10 | CelebA]')
         parser.add_argument('--serial_batches', action='store_true', help='if true, takes images in order to make batches, otherwise takes them randomly')
